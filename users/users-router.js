@@ -1,11 +1,12 @@
 const express = require('express')
+const jwt = require('jsonwebtoken')
 
 const router = express.Router()
 
 const db = require('../data/db-config')
 const { hash, compare } = require('../helper/hash')
 
-router.get('/users', (req, res) => {
+router.get('/users', verifyToken(), (req, res) => {
     db('users')
         .then(users => {
             res.status(200).json({ data: users })
@@ -35,7 +36,8 @@ router.post('/login', (req, res) => {
         .first()
         .then(user => {
             if (user && compare(req.body.password, user.password)) {
-                res.status(201).json({ message: 'you have been successfully logged in' })
+                const token = generateToken(user)
+                res.status(201).json({ message: 'you have been successfully logged in', token: token })
             } else {
                 res.status(401).json({ message: 'invalid credentials' })
             }
@@ -45,6 +47,43 @@ router.post('/login', (req, res) => {
         })
 })
 
+function generateToken(user) {
+    const payload = {
+        subject: user.id,
+        username: user.username,
+        department: user.department
+    }
 
+    const options = {
+        expiresIn: '1d'
+    }
+
+    return jwt.sign(payload, process.env.JWT_SECRET || "secret", options)
+}
+
+function verifyToken(req, res, next) {
+
+    return function (req, res, next) {
+        console.log(0)
+        const token = req.headers.authorization
+        const secret = process.env.JWT_SECRET || "secret"
+
+        if (token) {
+            jwt.verify(token, secret, (err, decodedToken) => {
+                if (!err) {
+                    console.log(1)
+                    req.jwt = decodedToken
+                    next()
+                } else {
+                    console.log(2)
+
+                    res.status(403).json({ message: 'Not Authorized' })
+                }
+            })
+        } else {
+            res.status(403).json({ message: 'Not Authorized' })
+        }
+    }
+}
 
 module.exports = router
